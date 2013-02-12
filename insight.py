@@ -1,14 +1,41 @@
+from datetime import datetime
+from isoweek import Week
 from bitdeli.insight import insight
-from bitdeli.widgets import Text, Bar, Table
+from bitdeli.widgets import Widget
 from discodb.query import Q, Literal, Clause
 
+NUM_WEEKS = 10
+
+class Matrix(Widget):
+    defaults = {'size': [3,3]}
+
+def get_latest(model):
+    return max(key.split(':', 1)[0] for key in model)
+
+def week_clause(week, event):
+    return Clause(Literal('%s:%s' % (week.day(i).strftime('%Y%m%d'), event))
+                  for i in range(7))
+
+def cohort(week, mevent, cevent, model):
+    mq = week_clause(week, mevent)
+    size = float(len(model.query(Q([mq]))))
+    for i in range(NUM_WEEKS):
+        if size > 0:
+            cq = week_clause(week + i + 1, cevent)
+            yield len(model.query(Q((mq, cq)))) / size
+        else:
+            yield 0
+            
 @insight
 def view(model, params):
     params = {'events': ['$signup', 'Clip created']}
-    def steps(events):
-        for i in range(len(events)):
-            q = Q([Clause([Literal(event)]) for event in events[:i + 1]])
-            yield events[i], len(model.query(q))
-    return [Bar(size=(12, 6),
-                data=list(steps(params['events'])))]
+    mevent, cevent = params['events']
+    latest = datetime.strptime(get_latest(model), '%Y%m%d')
+    week = Week(*latest.isocalendar()[:2])
+    rows = [list(cohort(week - i, mevent, cevent, model))
+            for i in range(NUM_WEEKS)]
+    return [Matrix(size=(12, 12), data=rows)]
+    
+    
+
     
