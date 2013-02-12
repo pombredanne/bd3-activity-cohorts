@@ -1,5 +1,6 @@
 from datetime import datetime
 from isoweek import Week
+from itertools import chain
 from bitdeli.insight import insight
 from bitdeli.widgets import Widget
 from discodb.query import Q, Literal, Clause
@@ -25,16 +26,24 @@ def cohort(week, mevent, cevent, model):
             yield len(model.query(Q((mq, cq)))) / size
         else:
             yield 0
-            
+
+def normalize(rows):
+    maxval = float(max(chain.from_iterable(rows)))
+    if maxval > 0:
+        for row in rows:
+            for i in range(NUM_WEEKS):
+                row[i] /= maxval
+    return rows
+        
 @insight
 def view(model, params):
-    params = {'events': ['$signup', 'Clip created']}
+    params = {'events': ['Page View', 'Page View']}
     mevent, cevent = params['events']
     latest = datetime.strptime(get_latest(model), '%Y%m%d')
     week = Week(*latest.isocalendar()[:2])
     rows = [list(cohort(week - i, mevent, cevent, model))
             for i in range(NUM_WEEKS)]
-    return [Matrix(size=(12, 12), data=rows)]
+    return [Matrix(size=(12, 12), data=normalize(rows))]
     
     
 
